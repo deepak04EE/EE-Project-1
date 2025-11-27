@@ -1,0 +1,202 @@
+$NOMOD51
+$INCLUDE (80C52.MCU)
+
+;====================================================================
+; DEFINITIONS
+;====================================================================
+ALE  equ P3.7
+SC   equ P3.6
+RS   equ P3.4
+RW   equ P3.5
+E    equ P3.3
+;====================================================================
+; VARIABLES
+;====================================================================
+Prev_ADC equ 30h       ; Memory location for storing the previous ADC value
+Channel_Index equ 31h  ; Memory location to track the current channel
+
+;====================================================================
+; RESET VECTOR
+;====================================================================
+org 0000h
+jmp Start
+
+org 001bh
+jmp T1ISR
+;====================================================================
+; CODE SEGMENT
+;====================================================================
+
+Start:mov ie,#88h
+      mov TMOD,#20H
+      MOV TL1,#0FAH
+      MOV TH1,#0FAH
+      SETB TR1
+      
+      mov P2,#0FFh;
+      mov P0, #00h       ; Initialize ADD_A, ADD_B, ADD_C to Channel 0
+      mov Channel_Index, #00h ; Start with Channel 0
+      call LCD_Init      ; Initialize LCD
+      mov Prev_ADC, #00h ; Initialize previous ADC value to 0
+
+Main_Loop:
+      ; Select Channel
+      mov A, Channel_Index
+      anl A, #07h        ; Ensure only lower 3 bits are used
+      mov P0, A          ; Set ADD_A, ADD_B, ADD_C
+      setb ALE           ; Latch the address
+      setb SC
+      clr ALE
+      clr SC
+
+      ; Wait for the ADC to stabilize (dummy delay)
+      call Delay
+
+      ; Read ADC value
+      mov A, P2          ; Read ADC value
+      mov B,P2
+      call Clear_LCD     ;
+      call Display_Channel ; Display the channel number and value
+
+      ; Delay for 10 seconds
+      mov R2, #10        ; 10 seconds delay
+Delay_Seconds:
+      call Long_Delay
+      djnz R2, Delay_Seconds
+      mov R7, Channel_Index
+      ; Increment Channel Index
+      inc Channel_Index
+      inc R7
+      cjne R7, #03h, Main_Loop ; Loop for 3 channels
+      mov Channel_Index, #00h ; Reset to Channel 0
+      sjmp Main_Loop
+
+;====================================================================
+; LCD ROUTINES
+;====================================================================
+
+LCD_Init:
+      mov P1, #38h       ; 8-bit mode, 2-line display
+      call LCD_Command
+      mov P1, #0Ch       ; Display ON, Cursor OFF
+      call LCD_Command
+      mov P1, #06h       ; Entry mode, auto increment
+      call LCD_Command
+      ret
+
+LCD_Command:
+      clr RS             ; Command mode
+      clr RW             ; Write mode
+      setb E             ; High to Low pulse
+      clr E
+      acall Delay
+      ret
+
+LCD_Data:
+      setb RS            ; Data mode
+      clr RW             ; Write mode
+      setb E             ; High to Low pulse
+      clr E
+      acall Delay
+      ret
+
+Clear_LCD:
+      mov P1, #01h       ; LCD clear command
+      call LCD_Command
+      ret
+      
+Display_Channel:
+      ; Select message based on Channel_Index
+      mov A, Channel_Index
+      mov DPTR, #Voltage1
+      cjne A, #01h, Check_Channel2
+      mov DPTR, #Voltage2
+      sjmp Display_Message
+Check_Channel2:
+      cjne A, #02h, Display_Message
+      mov DPTR, #Voltage3
+      
+Display_Message:
+      call Display_String ; Display the channel message
+      call Display_Value  ; Display the ADC value
+      ;++++++++++++++++++++++++++++++++
+      mov A, Channel_Index
+      mov DPTR, #m1; ohms
+      cjne A, #01h, Check_Channel2_2
+      mov DPTR, #m2; deg C
+      sjmp Display_String
+Check_Channel2_2:
+      cjne A, #02h, Display_String
+      mov DPTR, #m3; LUX
+      sjmp Display_String
+      ret
+
+Display_String:
+      clr A
+      movc A, @A+DPTR    ; Get character from code memory
+      jz End_String      ; End of string (null terminator)
+      mov P1, A          ; Send character to LCD
+      call LCD_Data
+      inc DPTR           ; Move to next character
+      sjmp Display_String
+End_String:
+      ret
+
+Display_Value:
+      mov A, B           ; Convert to ASCII for higher nibble
+      mov B, #100        ; Load divisor for hundreds place
+      div AB             ; A = quotient (hundreds), B = remainder
+      add A, #30h        ; Convert hundreds to ASCII
+      mov P1, A
+      call LCD_Data      ; Display hundreds place
+      mov A, B           ; Load remainder into A
+
+      mov B, #10         ; Load divisor for tens place
+      div AB             ; A = quotient (tens), B = remainder
+      add A, #30h        ; Convert tens to ASCII
+      mov P1, A
+      call LCD_Data      ; Display tens place
+
+      mov A, B           ; Units place (remainder)
+      add A, #30h        ; Convert units to ASCII
+      mov P1, A
+      call LCD_Data      ; Display units place
+      ret
+
+      
+T1ISR: 
+      CPL P3.1
+      RETI
+;====================================================================
+; DELAY ROUTINES
+;====================================================================
+Delay:
+      mov R0, #100
+Delay_Loop1:
+      mov R1, #100
+Delay_Loop2:
+      djnz R1, Delay_Loop2
+      djnz R0, Delay_Loop1
+      ret
+
+Long_Delay:
+      mov R0, #255       ; Adjust this value for 1-second delay
+Delay_1s_Loop1:
+      mov R1, #255
+Delay_1s_Loop2:
+      djnz R1, Delay_1s_Loop2
+      djnz R0, Delay_1s_Loop1
+      ret
+
+      
+;====================================================================
+; CONSTANTS
+;====================================================================
+Voltage1: db 'Ch_0 = ', 0;
+Voltage2: db 'Ch_1 = ', 0;
+Voltage3: db 'Ch_2 = ', 0;
+m1: db ' ohms',0;
+m2: db ' deg C',0;
+m3: db ' LUX',0;
+;====================================================================
+END
