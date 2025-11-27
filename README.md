@@ -39,4 +39,4 @@ The ADC0809 converts the analog signals from the sensors into digital values, wh
 - Programming Language: Assembly
 
 ## Circuit Diagram
-![Circuit Diagram](https://github.com/Keshab-Github/Embedded-Systems-project/blob/main/Circuit_Diagram.png?raw=true)
+![Circuit Diagram](https://github.com/deepak04EE/EE-Project-1/blob/main/Circuit_Diagram.png)
